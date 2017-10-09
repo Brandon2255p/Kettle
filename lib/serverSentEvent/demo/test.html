@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Title of the document</title>
+<script>
+    function LoadSSE(){
+        var source = new EventSource("/stats");
+        source.onmessage = function(event) {
+            document.getElementById("result").innerHTML += event.data + "<br>";
+        };
+    }
+</script>
+</head>
+<body id="result" onload="LoadSSE()">
+The content of the document......
+</body>
+</html>
