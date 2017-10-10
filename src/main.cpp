@@ -8,30 +8,9 @@
 const char* ssid = "Router";
 const char* password = "cupcak3sinmyExt";
 Kettle kettle;
-ESP8266WebServer server(80);
-
-void handleRoot() {
-    server.send(200, "text/plain", "hello from kettle!");
-}
-void handleNotFound(){
-    String message = "File Not Found\n\n";
-    message += "URI: ";
-    message += server.uri();
-    message += "\nMethod: ";
-    message += (server.method() == HTTP_GET)?"GET":"POST";
-    message += "\nArguments: ";
-    message += server.args();
-    message += "\n";
-    for (uint8_t i=0; i<server.args(); i++){
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-    }
-    server.send(404, "text/plain", message);
-}
+WiFiServer server(80);
+WiFiClient streamClient;
 void setupHttpServer(){
-    server.on("/", handleRoot);
-
-    server.onNotFound(handleNotFound);
-
     server.begin();
 }
 
@@ -76,36 +55,79 @@ void setup() {
 void loop() {
     ArduinoOTA.handle();
     kettle.Handle();
-    server.handleClient();
+    if(streamClient.connected()) {
+        Serial.println("Found stream client");
+        for(int i =0; i< 10; i++)
+            streamClient.print("data: continued event\n\n");
+        streamClient.flush();
+        streamClient.stop();
+        return;
+    }
+    WiFiClient client = server.available();
+    if (!client) {
+        return;
+    }
+    //Client has connected
+    String request = client.readStringUntil('\r');
+    if (request.indexOf("/BOIL") != -1){
+        Serial.println("Client Requested Boil");
+        kettle.StartBoiling();
+    }
+    else if (request.indexOf("/STOP") != -1){
+        Serial.println("Client Requested Stop Boil");
+        kettle.StopBoiling();
+    }
+    else if (request.indexOf("/stats") != -1){
+        Serial.println("Client Requested Stats");
+        streamClient = client;
+        String header =  "HTTP/1.1 200 OK\r\n";
+        String response = "retry: 10000\ndata: The server says hi\n\n";
+        header += "Content-Type: text/event-stream\r\n";
+        header += "Connection: Keep-Alive\r\n";
+        header += "Cache-Control: No-Cache\r\n";
+        client.println(header);
+        client.println(response);
 
-    // WiFiClient client = server.available();
-    // if (!client) {
-    //     return;
-    // }
-    // //Client has connected
-    // String request = client.readStringUntil('\r');
-    // if (request.indexOf("/BOIL") != -1){
-    //     Serial.println("Client Requested Boil");
-    //     kettle.StartBoiling();
-    // }
-    // else if (request.indexOf("/STOP") != -1){
-    //     Serial.println("Client Requested Stop Boil");
-    //     kettle.StopBoiling();
-    // }
-    // client.println("HTTP/1.1\r\n200 OK");
-    // client.println("<!DOCTYPE html><html><head><title>Kettle</title>");
-    // client.println("<script>");
-    //     client.println("function LoadSSE(){");
-    //         client.println("var source = new EventSource(\"/stats\");");
-    //         client.println("source.onmessage = function(event) {");
-    //             client.println("document.getElementById(\"result\").innerHTML += event.data + \"<br>\";");
-    //         client.println("};");
-    //     client.println("}");
-    // client.println("</script>");
-    // client.println("</head>");
-    // client.println("<body id=\"result\" onload=\"LoadSSE()\">");
-    // client.println("The content of the document......");
-    // client.println("</body>");
-    // client.println("</html>");
-    // client.flush();
+        String messageType = "event: ping\n";
+        String pingEvent = "data: Ping event\n\n";
+        for(int i = 0; i < 10; i++){
+            Serial.println("Sending");
+            String id = String(i + 1);
+            String sending = "id: " + id  + "\n" +  messageType + pingEvent;
+            client.println(sending);
+        }
+        client.flush();
+        Serial.println("Client ended");
+        return;
+    }
+    String header =  "HTTP/1.1 200 OK\r\n";
+    String response =
+    "<!DOCTYPE html><html><head><title>Kettle</title>"
+    "<script>"
+        "function LoadSSE(){"
+            "var source = new EventSource(\"/stats\");"
+            "source.onmessage = function(event) {"
+                "document.getElementById(\"result\").innerHTML += event.data + \"<br>\";"
+            "};"
+            "source.addEventListener('open', function(e) {"
+                "document.getElementById(\"result\").innerHTML += 'OPENED' + e + \"<br>\";"
+            "}, false);"
+            "source.addEventListener('error', function(e) {"
+              "if (e.readyState == EventSource.CLOSED) {"
+              "document.getElementById(\"result\").innerHTML += 'CLOSED' + e + \"<br>\";"
+              "}"
+            "}, false);"
+        "}"
+    "</script>"
+    "</head>"
+    "<body id=\"result\" onload=\"LoadSSE()\">"
+    "The content of the document......"
+    "</body>"
+    "</html>";
+    header += "Content-Type: text/html\r\n";
+    header += "Content-Length: " + String(response.length()) + "\r\n";
+    client.println(header);
+    client.println(response);
+    client.println("");
+    client.flush();
 }
