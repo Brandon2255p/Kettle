@@ -3,13 +3,15 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <kettle.h>
+#include <serverSentEvent.h>
 #include <ESP8266WebServer.h>
 
 const char* ssid = "Router";
 const char* password = "cupcak3sinmyExt";
 Kettle kettle;
 WiFiServer server(80);
-WiFiClient streamClient;
+ServerSentEvent sse;
+
 void setupHttpServer(){
     server.begin();
 }
@@ -55,14 +57,7 @@ void setup() {
 void loop() {
     ArduinoOTA.handle();
     kettle.Handle();
-    if(streamClient.connected()) {
-        Serial.println("Found stream client");
-        for(int i =0; i< 10; i++)
-            streamClient.print("data: continued event\n\n");
-        streamClient.flush();
-        streamClient.stop();
-        return;
-    }
+    sse.Handle();
     WiFiClient client = server.available();
     if (!client) {
         return;
@@ -79,25 +74,7 @@ void loop() {
     }
     else if (request.indexOf("/stats") != -1){
         Serial.println("Client Requested Stats");
-        streamClient = client;
-        String header =  "HTTP/1.1 200 OK\r\n";
-        String response = "retry: 10000\ndata: The server says hi\n\n";
-        header += "Content-Type: text/event-stream\r\n";
-        header += "Connection: Keep-Alive\r\n";
-        header += "Cache-Control: No-Cache\r\n";
-        client.println(header);
-        client.println(response);
-
-        String messageType = "event: ping\n";
-        String pingEvent = "data: Ping event\n\n";
-        for(int i = 0; i < 10; i++){
-            Serial.println("Sending");
-            String id = String(i + 1);
-            String sending = "id: " + id  + "\n" +  messageType + pingEvent;
-            client.println(sending);
-        }
-        client.flush();
-        Serial.println("Client ended");
+        sse.SetClient(client);
         return;
     }
     String header =  "HTTP/1.1 200 OK\r\n";
