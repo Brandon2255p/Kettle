@@ -10,7 +10,7 @@ const char* ssid = "Router";
 const char* password = "cupcak3sinmyExt";
 Kettle kettle;
 WiFiServer server(80);
-ServerSentEvent sse;
+ServerSentEvent sse(2000);
 
 void setupHttpServer(){
     server.begin();

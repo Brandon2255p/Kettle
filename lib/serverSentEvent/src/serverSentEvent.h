@@ -6,6 +6,7 @@
 class ServerSentEvent
 {
 public:
+    ServerSentEvent(int updatePeriod_ms);
     void Handle();
     void SetClient(WiFiClient client);
     void sendEvent(String content, String type = "", String id = "");
@@ -17,7 +18,8 @@ private:
     "Cache-Control: No-Cache\r\n";
 
     WiFiClient streamClient;
-
+    long previousMillis;
+    int updatePeriod_ms;
 };
 
 

@@ -1,10 +1,19 @@
 #include "serverSentEvent.h"
+
+ServerSentEvent::ServerSentEvent(int _updatePeriod_ms):
+    updatePeriod_ms(_updatePeriod_ms)
+{
+}
+
 void ServerSentEvent::Handle()
 {
     if(streamClient.connected()) {
-        Serial.println("Found stream client");
-        sendEvent("hello");
-        // streamClient.print("data: continued event\n\n");
+        unsigned long currentMillis = millis();
+        if (currentMillis - previousMillis >= updatePeriod_ms) {
+            previousMillis = currentMillis;
+            Serial.println("Updating stream client");
+            sendEvent("hello");
+        }
         streamClient.flush();
     }
 }
