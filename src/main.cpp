@@ -5,12 +5,14 @@
 #include <kettle.h>
 #include <serverSentEvent.h>
 #include <ESP8266WebServer.h>
+#include <KettleTempControl.h>
 
 const char* ssid = "Router";
 const char* password = "cupcak3sinmyExt";
 Kettle kettle;
 WiFiServer server(80);
 ServerSentEvent sse(2000);
+KettleTempControl kettleTempControl;
 
 void setupHttpServer(){
     server.begin();
