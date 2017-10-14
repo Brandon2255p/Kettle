@@ -130,7 +130,7 @@ void loop() {
     "<button onclick=\"CallApi('BOIL')\">Boil</button><br><br>"
     "<button onclick=\"CallApi('STOP')\">Stop</button><br><br>"
     "<button onclick=\"CallApi('REBOOT')\">Reboot</button><br><br>"
-    "<button onclick=\"LoadSSE()\">Reconnect</button><br><br>"
+    "<button onclick=\"location.reload(true);\">Reconnect</button><br><br>"
     "</body>"
     "</html>";
     header += "Content-Type: text/html\r\n";
