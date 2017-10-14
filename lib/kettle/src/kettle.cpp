@@ -1,11 +1,12 @@
 #include "kettle.h"
 #include <Arduino.h>
-
+#include <ServerSentEvent.h>
 Kettle::Kettle():
     KettleRelay(12)
 {
     auto callback = std::bind(&Kettle::NoOverBoil_AlarmCallback, this);
-    NoOverBoilAlarm.SetupAlarm(1, 0, callback);
+    NoOverBoilAlarm.SetupAlarm(3, 30, callback);
+    kettleTempControl.Setup(70, callback);
 }
 
 void Kettle::StartBoiling()
@@ -26,7 +27,7 @@ void Kettle::StopBoiling()
 void Kettle::NoOverBoil_AlarmCallback(){
     KettleRelay.Off();
     isBoiling = false;
-    Serial.println("ALARM: NoOverBoil");
+    sseSerial.println("ALARM: NoOverBoil");
 }
 
 void Kettle::Handle()
@@ -39,4 +40,5 @@ void Kettle::Handle()
     {
         NoOverBoilAlarm.HandleAlarm();
     }
+    kettleTempControl.Handle();
 }
