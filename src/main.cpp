@@ -1,5 +1,5 @@
 #define DEBUG_SERIAL sseSerial
-
+#include "ElectrodragonRelay.h"
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
@@ -7,11 +7,15 @@
 #include <kettle.h>
 #include <serverSentEvent.h>
 #include <ESP8266WebServer.h>
+#include <LevelSensor.h>
+#include <relay.h>
 
 const char* ssid = "Router";
 const char* password = "cupcak3sinmyExt";
 Kettle kettle;
 WiFiServer server(80);
+LevelSensor waterLevelSensor;
+Relay WaterInputPump(Pin_Relay_2);
 
 void setupHttpServer(){
     server.begin();
@@ -22,8 +26,13 @@ void OverTempCallback(){
     sseSerial.print("Temp limit reached");
 }
 
+void WaterLevelReachedCallback()
+{
+    sseSerial.print("Water level reached");
+}
+
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(115200);
     Serial.println("Booting");
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
@@ -32,7 +41,7 @@ void setup() {
         delay(5000);
         ESP.restart();
     }
-    ArduinoOTA.setHostname("kettle");
+    ArduinoOTA.setHostname("Kettle");
     ArduinoOTA.onStart([]() {
         Serial.println("Start");
     });
@@ -55,6 +64,7 @@ void setup() {
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
+    waterLevelSensor.Setup(Pin_Button_0, WaterLevelReachedCallback);
     setupHttpServer();
     ESP.wdtDisable();
     ESP.wdtEnable(WDTO_8S);
@@ -64,11 +74,11 @@ void loop() {
     ArduinoOTA.handle();
     kettle.Handle();
     sseSerial.Handle();
+    waterLevelSensor.Handle();
     WiFiClient client = server.available();
     if (!client) {
         return;
     }
-    //Client has connected
     String request = client.readStringUntil('\r');
     if (request.indexOf("/BOIL") != -1){
         sseSerial.println("Client Requested Boil");
@@ -95,8 +105,6 @@ void loop() {
             "var source = new EventSource(\"/stats\");"
             "source.onmessage = function(event) {"
                 "console.log(event);"
-                //"document.getElementById(\"result\").innerHTML = event.data + \"<br>\";"
-                //"document.getElementById(\"result\").scrollTop += 30;"
             "};"
             "source.addEventListener('message', function(e) {"
                 "document.getElementById(\"result\").innerHTML += e.data + \"<br>\";"
