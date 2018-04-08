@@ -24,7 +24,7 @@ void ServerSentEvent::sendEvent(String content, String type, String id)
 {
     String sending = "id: " + id  + "\n" + "event: " +  type + "\n" + "data: " + content + "\n\n";
     streamClient.print(sending);
-    Serial.println(sending);
+    // Serial.println(sending);
 }
 
 void ServerSentEvent::SetClient(WiFiClient client)

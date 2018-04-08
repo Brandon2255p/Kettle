@@ -11,7 +11,9 @@ public:
     void StartBoiling();
     void StopBoiling();
     void Handle();
+    bool SignalBoilComplete();
 private:
+    bool signalBoilComplete;
     bool isBoiling;
     Relay KettleRelay;
     Alarm NoOverBoilAlarm;

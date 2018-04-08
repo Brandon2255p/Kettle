@@ -9,13 +9,19 @@
 #include <ESP8266WebServer.h>
 #include <LevelSensor.h>
 #include <relay.h>
+#include "Html.h"
 
 const char* ssid = "Router";
 const char* password = "cupcak3sinmyExt";
 Kettle kettle;
 WiFiServer server(80);
-LevelSensor waterLevelSensor;
+// LevelSensor waterLevelSensor;
 Relay WaterInputPump(Pin_Relay_2);
+
+String command = "";         // a String to hold incoming data
+bool commandComplete = false;  // whether the string is complete
+void serialEvent();
+void HandleInput();
 
 void setupHttpServer(){
     server.begin();
@@ -26,13 +32,13 @@ void OverTempCallback(){
     sseSerial.print("Temp limit reached");
 }
 
-void WaterLevelReachedCallback()
-{
-    sseSerial.print("Water level reached");
-}
+// void WaterLevelReachedCallback()
+// {
+//     sseSerial.print("Water level reached");
+// }
 
 void setup() {
-    Serial.begin(115200);
+    Serial.begin(9600);
     Serial.println("Booting");
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
@@ -64,7 +70,7 @@ void setup() {
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
-    waterLevelSensor.Setup(Pin_Button_0, WaterLevelReachedCallback);
+    // waterLevelSensor.Setup(Pin_Button_0, WaterLevelReachedCallback);
     setupHttpServer();
     ESP.wdtDisable();
     ESP.wdtEnable(WDTO_8S);
@@ -74,7 +80,15 @@ void loop() {
     ArduinoOTA.handle();
     kettle.Handle();
     sseSerial.Handle();
-    waterLevelSensor.Handle();
+    serialEvent();
+    HandleInput();
+    if(kettle.SignalBoilComplete())
+    {
+        sseSerial.println("Sending pour command");
+        Serial.println("cmdpour");
+    }
+    // waterLevelSensor.Handle();
+
     WiFiClient client = server.available();
     if (!client) {
         return;
@@ -92,59 +106,55 @@ void loop() {
         sseSerial.println("Client Requested REBOOT");
         ESP.restart();
     }
+    else if (request.indexOf("/DROP") != -1){
+        Serial.println("cmddrop");
+    }
+    else if (request.indexOf("/PUMP") != -1){
+        Serial.println("cmdpump");
+    }
+    else if (request.indexOf("/POUR") != -1){
+        Serial.println("cmdpour");
+    }
+    else if (request.indexOf("/RESET") != -1){
+        Serial.println("cmdx");
+    }
     else if (request.indexOf("/stats") != -1){
         Serial.println("Client Requested Stats");
         sseSerial.SetClient(client);
         return;
     }
-    String header =  "HTTP/1.1 200 OK\r\n";
-    String response =
-    "<!DOCTYPE html><html><head><title>Kettle</title>"
-    "<script>"
-        "function LoadSSE(){"
-            "var source = new EventSource(\"/stats\");"
-            "source.onmessage = function(event) {"
-                "console.log(event);"
-            "};"
-            "source.addEventListener('message', function(e) {"
-                "document.getElementById(\"result\").innerHTML += e.data + \"<br>\";"
-                "document.getElementById(\"result\").scrollTop += 30;"
-            "}, false);"
-            "source.addEventListener('temperature', function(e) {"
-                "document.getElementById('temperature').innerHTML = 'Kettle Temperature: ' + e.data + ' C' + \"<br>\";"
-            "}, false);"
-            "source.addEventListener('open', function(e) {"
-                "document.getElementById(\"result\").innerHTML += 'OPENED' + e + \"<br>\";"
-            "}, false);"
-            "source.addEventListener('error', function(e) {"
-              "if (e.readyState == EventSource.CLOSED) {"
-              "document.getElementById(\"result\").innerHTML += 'Lost connection';"
-              "}"
-            "}, false);"
-        "}"
-        "function CallApi(endpoint) {"
-        "var xhttp = new XMLHttpRequest();"
-        "xhttp.onreadystatechange = function() {"
-            "if (this.readyState == 4 && this.status == 200) {"
-               "alert('Doing ' + endpoint);"
-            "}};"
-        "xhttp.open('GET', endpoint, true);"
-        "xhttp.send();}"
-    "</script>"
-    "</head>"
-    "<body onload=\"LoadSSE()\">"
-    "<div id='temperature'></div>"
-    "<div id='result' style='overflow:auto;width:200px;height:200px;border:solid 1px green;'></div>"
-    "<button onclick=\"CallApi('BOIL')\">Boil</button><br><br>"
-    "<button onclick=\"CallApi('STOP')\">Stop</button><br><br>"
-    "<button onclick=\"CallApi('REBOOT')\">Reboot</button><br><br>"
-    "<button onclick=\"location.reload(true);\">Reconnect</button><br><br>"
-    "</body>"
-    "</html>";
-    header += "Content-Type: text/html\r\n";
-    header += "Content-Length: " + String(response.length()) + "\r\n";
-    client.println(header);
+
+    client.println(header + "Content-Length: " + String(response.length()) + "\r\n");
     client.println(response);
     client.println("");
     client.flush();
+}
+
+
+void serialEvent() {
+  while (Serial.available()) {
+    char inChar = (char)Serial.read();
+    if (inChar == '\n') {
+        commandComplete = true;
+        return;
+    }
+    command += inChar;
+  }
+}
+
+void HandleInput()
+{
+    if (commandComplete) {
+        if(command.indexOf("cmdboil") !=  -1)
+        {
+            sseSerial.println("BOIL SIGNAL");
+            kettle.StartBoiling();
+        }
+        else
+        {
+            sseSerial.println(command);
+        }
+        commandComplete = false;
+        command = "";
+    }
 }
