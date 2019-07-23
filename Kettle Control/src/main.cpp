@@ -11,8 +11,8 @@
 #include <relay.h>
 #include "Html.h"
 
-const char* ssid = "Router";
-const char* password = "cupcak3sinmyExt";
+const char* ssid = "Make it RainLTE";
+const char* password = "";
 Kettle kettle;
 WiFiServer server(80);
 // LevelSensor waterLevelSensor;
