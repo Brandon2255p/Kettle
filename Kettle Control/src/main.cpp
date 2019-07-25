@@ -10,16 +10,16 @@
 #include <LevelSensor.h>
 #include <relay.h>
 #include "Html.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <PID_v1.h>
 
-const char* ssid = "Make it RainLTE";
-const char* password = "";
-Kettle kettle;
+const char* ssid = "Too Fly for a WiFi";
+const char* password = "cupcak3s";
+
 WiFiServer server(80);
-// LevelSensor waterLevelSensor;
-Relay WaterInputPump(Pin_Relay_2);
 
-String command = "";         // a String to hold incoming data
-bool commandComplete = false;  // whether the string is complete
+
 void serialEvent();
 void HandleInput();
 
@@ -27,17 +27,18 @@ void setupHttpServer(){
     server.begin();
 }
 
-void OverTempCallback(){
-    kettle.StopBoiling();
-    sseSerial.print("Temp limit reached");
-}
 
-// void WaterLevelReachedCallback()
-// {
-//     sseSerial.print("Water level reached");
-// }
-
+OneWire sensorBus(Pin_DHT);
+DallasTemperature sensors(&sensorBus);
+DeviceAddress insideThermometer;
+double Setpoint, Input, Output;
+double consKp=2, consKi=0, consKd=0;
+PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, DIRECT);
+int WindowSize = 1000;
+unsigned long windowStartTime;
 void setup() {
+    Serial.println (ESP.getSdkVersion());
+    windowStartTime=millis();
     Serial.begin(9600);
     Serial.println("Booting");
     WiFi.mode(WIFI_STA);
@@ -70,91 +71,43 @@ void setup() {
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
-    // waterLevelSensor.Setup(Pin_Button_0, WaterLevelReachedCallback);
     setupHttpServer();
-    ESP.wdtDisable();
-    ESP.wdtEnable(WDTO_8S);
+
+    sensors.begin();
+    if (!sensors.getAddress(insideThermometer, 0)) Serial.println("Unable to find address for Device 0");
+    sensors.setResolution(10);
+    Setpoint = 80;
+    myPID.SetOutputLimits(0, WindowSize);
+    myPID.SetSampleTime(WindowSize);
+    myPID.SetMode(AUTOMATIC);
+    pinMode(Pin_Relay_1, OUTPUT);
 }
 
 void loop() {
     ArduinoOTA.handle();
-    kettle.Handle();
-    sseSerial.Handle();
-    serialEvent();
-    HandleInput();
-    if(kettle.SignalBoilComplete())
+    sensors.requestTemperatures();
+    Input = sensors.getTempC(insideThermometer);
+    Serial.println(Input);
+    if (millis() - windowStartTime > WindowSize)
     {
-        sseSerial.println("Sending pour command");
-        Serial.println("cmdpour");
-    }
-    // waterLevelSensor.Handle();
+        Serial.println("Computing");
+        auto res = myPID.Compute();
+        Serial.println("res");
+        Serial.println(res);
 
-    WiFiClient client = server.available();
-    if (!client) {
-        return;
+        windowStartTime += WindowSize;
     }
-    String request = client.readStringUntil('\r');
-    if (request.indexOf("/BOIL") != -1){
-        sseSerial.println("Client Requested Boil");
-        kettle.StartBoiling();
+    Serial.println("Output");
+    Serial.println(Output);
+    if (Output > 1)
+    {
+        Serial.println("ON");
+        digitalWrite(Pin_Relay_1, HIGH);
     }
-    else if (request.indexOf("/STOP") != -1){
-        sseSerial.println("Client Requested Stop Boil");
-        kettle.StopBoiling();
-    }
-    else if (request.indexOf("/REBOOT") != -1){
-        sseSerial.println("Client Requested REBOOT");
-        ESP.restart();
-    }
-    else if (request.indexOf("/DROP") != -1){
-        Serial.println("cmddrop");
-    }
-    else if (request.indexOf("/PUMP") != -1){
-        Serial.println("cmdpump");
-    }
-    else if (request.indexOf("/POUR") != -1){
-        Serial.println("cmdpour");
-    }
-    else if (request.indexOf("/RESET") != -1){
-        Serial.println("cmdx");
-    }
-    else if (request.indexOf("/stats") != -1){
-        Serial.println("Client Requested Stats");
-        sseSerial.SetClient(client);
-        return;
-    }
-
-    client.println(header + "Content-Length: " + String(response.length()) + "\r\n");
-    client.println(response);
-    client.println("");
-    client.flush();
+    else
+    {
+        Serial.println("OFF");
+        digitalWrite(Pin_Relay_1, LOW);
+    } 
 }
 
-
-void serialEvent() {
-  while (Serial.available()) {
-    char inChar = (char)Serial.read();
-    if (inChar == '\n') {
-        commandComplete = true;
-        return;
-    }
-    command += inChar;
-  }
-}
-
-void HandleInput()
-{
-    if (commandComplete) {
-        if(command.indexOf("cmdboil") !=  -1)
-        {
-            sseSerial.println("BOIL SIGNAL");
-            kettle.StartBoiling();
-        }
-        else
-        {
-            sseSerial.println(command);
-        }
-        commandComplete = false;
-        command = "";
-    }
-}
