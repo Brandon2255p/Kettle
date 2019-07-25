@@ -7,26 +7,26 @@
 #include <kettle.h>
 #include <serverSentEvent.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266HTTPUpdateServer.h>
 #include <LevelSensor.h>
 #include <relay.h>
 #include "Html.h"
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <PID_v1.h>
+#include "RemoteDebug.h"        //https://github.com/JoaoLopesF/RemoteDebug
+
+RemoteDebug Debug;
 
 const char* ssid = "Too Fly for a WiFi";
 const char* password = "cupcak3s";
+const char* host = "kettle";
 
-WiFiServer server(80);
-
+ESP8266WebServer httpServer(80);
+ESP8266HTTPUpdateServer httpUpdater(false);
 
 void serialEvent();
 void HandleInput();
-
-void setupHttpServer(){
-    server.begin();
-}
-
 
 OneWire sensorBus(Pin_DHT);
 DallasTemperature sensors(&sensorBus);
@@ -37,10 +37,11 @@ PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, DIRECT);
 int WindowSize = 1000;
 unsigned long windowStartTime;
 void setup() {
-    Serial.println (ESP.getSdkVersion());
     windowStartTime=millis();
     Serial.begin(9600);
     Serial.println("Booting");
+    Serial.println(ssid);
+    windowStartTime=millis();
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
     while (WiFi.waitForConnectResult() != WL_CONNECTED) {
@@ -48,35 +49,26 @@ void setup() {
         delay(5000);
         ESP.restart();
     }
-    ArduinoOTA.setHostname("Kettle");
-    ArduinoOTA.onStart([]() {
-        Serial.println("Start");
-    });
-    ArduinoOTA.onEnd([]() {
-        Serial.println("\nEnd");
-    });
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    });
-    ArduinoOTA.onError([](ota_error_t error) {
-        Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-        else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-        else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-        else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-        else if (error == OTA_END_ERROR) Serial.println("End Failed");
-    });
-    ArduinoOTA.begin();
+
+    MDNS.begin(host);
+    httpUpdater.setup(&httpServer);
+    httpServer.begin();
+    MDNS.addService("http", "tcp", 80);
+    MDNS.addService("telnet", "tcp", 23);
+    
     Serial.println("Ready");
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
-
-    setupHttpServer();
+	
+    Debug.begin(host); // Initialize the WiFi server
+	Debug.setResetCmdEnabled(true); // Enable the reset command
+	Debug.showProfiler(true); // Profiler (Good to measure times, to optimize codes)
+	Debug.showColors(true); // Color
 
     sensors.begin();
     if (!sensors.getAddress(insideThermometer, 0)) Serial.println("Unable to find address for Device 0");
     sensors.setResolution(10);
-    Setpoint = 80;
+    Setpoint = 50;
     myPID.SetOutputLimits(0, WindowSize);
     myPID.SetSampleTime(WindowSize);
     myPID.SetMode(AUTOMATIC);
@@ -84,10 +76,16 @@ void setup() {
 }
 
 void loop() {
-    ArduinoOTA.handle();
+    httpServer.handleClient();
+    MDNS.update();
+    Debug.handle();
+
     sensors.requestTemperatures();
     Input = sensors.getTempC(insideThermometer);
-    Serial.println(Input);
+    if (Debug.isActive(Debug.VERBOSE))
+    {
+        debugV("%0.2f",Input);
+    }
     if (millis() - windowStartTime > WindowSize)
     {
         Serial.println("Computing");
@@ -108,6 +106,10 @@ void loop() {
     {
         Serial.println("OFF");
         digitalWrite(Pin_Relay_1, LOW);
-    } 
+    }
+    if (Debug.isActive(Debug.VERBOSE))
+    {
+        debugV("On %d",Output > 1);
+    }
 }
 
