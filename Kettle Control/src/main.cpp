@@ -17,6 +17,7 @@
 #include "RemoteDebug.h"        //https://github.com/JoaoLopesF/RemoteDebug
 
 RemoteDebug Debug;
+void processCmdRemoteDebug();
 
 const char* ssid = "Too Fly for a WiFi";
 const char* password = "cupcak3s";
@@ -27,14 +28,14 @@ ESP8266HTTPUpdateServer httpUpdater(false);
 
 void serialEvent();
 void HandleInput();
-
+bool masterOverride = true;
 OneWire sensorBus(Pin_DHT);
 DallasTemperature sensors(&sensorBus);
 DeviceAddress insideThermometer;
 double Setpoint, Input, Output;
-double consKp=2, consKi=0, consKd=0;
+double consKp=0.2, consKi=2, consKd=0;
 PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, DIRECT);
-int WindowSize = 1000;
+int WindowSize = 500;
 unsigned long windowStartTime;
 void setup() {
     windowStartTime=millis();
@@ -64,11 +65,12 @@ void setup() {
 	Debug.setResetCmdEnabled(true); // Enable the reset command
 	Debug.showProfiler(true); // Profiler (Good to measure times, to optimize codes)
 	Debug.showColors(true); // Color
+    Debug.setCallBackProjectCmds(&processCmdRemoteDebug);
 
     sensors.begin();
     if (!sensors.getAddress(insideThermometer, 0)) Serial.println("Unable to find address for Device 0");
-    sensors.setResolution(10);
-    Setpoint = 50;
+    sensors.setResolution(9);
+    Setpoint = 30;
     myPID.SetOutputLimits(0, WindowSize);
     myPID.SetSampleTime(WindowSize);
     myPID.SetMode(AUTOMATIC);
@@ -82,34 +84,44 @@ void loop() {
 
     sensors.requestTemperatures();
     Input = sensors.getTempC(insideThermometer);
-    if (Debug.isActive(Debug.VERBOSE))
-    {
-        debugV("%0.2f",Input);
-    }
+    debugV("%0.2f vs %0.2f",Input, Setpoint);
     if (millis() - windowStartTime > WindowSize)
     {
-        Serial.println("Computing");
         auto res = myPID.Compute();
-        Serial.println("res");
-        Serial.println(res);
-
         windowStartTime += WindowSize;
     }
-    Serial.println("Output");
-    Serial.println(Output);
-    if (Output > 1)
+    if(masterOverride)
     {
-        Serial.println("ON");
+        debugV("Overrideing");
+        digitalWrite(Pin_Relay_1, LOW);
+        return;
+    }
+    if (Output > 2)
+    {
         digitalWrite(Pin_Relay_1, HIGH);
     }
     else
     {
-        Serial.println("OFF");
         digitalWrite(Pin_Relay_1, LOW);
     }
-    if (Debug.isActive(Debug.VERBOSE))
-    {
-        debugV("On %d",Output > 1);
-    }
+    debugV("On %d",Output > 1);
 }
 
+void processCmdRemoteDebug() {
+
+	String lastCmd = Debug.getLastCommand();
+
+	if (lastCmd.startsWith("off"))
+    {
+        masterOverride = true;
+    }
+    if (lastCmd.startsWith("on"))
+    {
+        masterOverride = false;
+    }
+    if (lastCmd.startsWith("sp"))
+    {
+        auto sp=lastCmd.substring(2);
+        Setpoint = sp.toDouble();
+    }
+}
